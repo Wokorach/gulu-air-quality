@@ -7,7 +7,7 @@ Developed by CYPIS DataTelligence - Intelligent Systems for a Data-Driven Future
 import json
 import os
 from pathlib import Path
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 import pytz
 
 OUTPUT_DIR = '_site'
@@ -31,23 +31,6 @@ def format_uganda_time(dt=None):
         except:
             dt = get_uganda_time()
     return dt.strftime('%d %b %Y, %H:%M:%S %Z')
-
-def get_aqi_color(aqi):
-    """Get CSS class for AQI value"""
-    if aqi is None:
-        return 'bg-gray-500'
-    if aqi <= 50:
-        return 'bg-green-500'
-    elif aqi <= 100:
-        return 'bg-yellow-500 text-gray-800'
-    elif aqi <= 150:
-        return 'bg-orange-500'
-    elif aqi <= 200:
-        return 'bg-red-500'
-    elif aqi <= 300:
-        return 'bg-purple-600'
-    else:
-        return 'bg-maroon-700'
 
 def get_health_color_class(color):
     """Get CSS class for health color"""
@@ -570,8 +553,19 @@ def generate_html():
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-sm" id="dataTable">
-                    <thead class="bg-gray-50"><tr><th class="px-6 py-3 text-left cursor-pointer" onclick="sortTable(0)">Time <i class="fas fa-sort text-gray-400"></i></th><th class="px-6 py-3 text-left cursor-pointer" onclick="sortTable(1)">Station <i class="fas fa-sort text-gray-400"></i></th><th class="px-6 py-3 text-left cursor-pointer" onclick="sortTable(2)">PM2.5 <i class="fas fa-sort text-gray-400"></i></th><th class="px-6 py-3 text-left cursor-pointer" onclick="sortTable(3)">PM10 <i class="fas fa-sort text-gray-400"></i></th><th class="px-6 py-3 text-left cursor-pointer" onclick="sortTable(4)">AQI <i class="fas fa-sort text-gray-400"></i></th><th class="px-6 py-3 text-left">Status</th></tr></thead>
-                    <tbody id="tableBody">{table_html}</tbody>
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left cursor-pointer" onclick="sortTable(0)">Time <i class="fas fa-sort text-gray-400"></i></th>
+                            <th class="px-6 py-3 text-left cursor-pointer" onclick="sortTable(1)">Station <i class="fas fa-sort text-gray-400"></i></th>
+                            <th class="px-6 py-3 text-left cursor-pointer" onclick="sortTable(2)">PM2.5 <i class="fas fa-sort text-gray-400"></i></th>
+                            <th class="px-6 py-3 text-left cursor-pointer" onclick="sortTable(3)">PM10 <i class="fas fa-sort text-gray-400"></i></th>
+                            <th class="px-6 py-3 text-left cursor-pointer" onclick="sortTable(4)">AQI <i class="fas fa-sort text-gray-400"></i></th>
+                            <th class="px-6 py-3 text-left">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody">
+                        {table_html}
+                    </tbody>
                 </table>
             </div>
             <div class="px-6 py-3 bg-gray-50 border-t text-xs text-gray-500 flex justify-between">
@@ -641,7 +635,19 @@ def generate_html():
                         {{ label: 'WHO Guideline (15 µg/m³)', data: Array(timestamps.length).fill(15), borderColor: '#22c55e', borderDash: [5, 5], fill: false, pointRadius: 0, borderWidth: 2 }}
                     ]
                 }},
-                options: {{ responsive: true, maintainAspectRatio: true, interaction: {{ mode: 'index', intersect: false }}, plugins: {{ legend: {{ position: 'top', labels: {{ usePointStyle: true, boxWidth: 8 }} }}, tooltip: {{ backgroundColor: 'rgba(0,0,0,0.8)' }} }}, scales: {{ y: {{ beginAtZero: true, title: {{ display: true, text: 'Concentration (µg/m³)' }} }}, x: {{ title: {{ display: true, text: 'Time' }}, ticks: {{ maxRotation: 45, minRotation: 45 }} }} }} }}
+                options: {{
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    interaction: {{ mode: 'index', intersect: false }},
+                    plugins: {{
+                        legend: {{ position: 'top', labels: {{ usePointStyle: true, boxWidth: 8 }} }},
+                        tooltip: {{ backgroundColor: 'rgba(0,0,0,0.8)' }}
+                    }},
+                    scales: {{
+                        y: {{ beginAtZero: true, title: {{ display: true, text: 'Concentration (µg/m³)' }} }},
+                        x: {{ title: {{ display: true, text: 'Time' }}, ticks: {{ maxRotation: 45, minRotation: 45 }} }}
+                    }}
+                }}
             }});
         }}
         
@@ -669,14 +675,41 @@ def generate_html():
         function renderTable(data) {{
             const tbody = document.getElementById('tableBody');
             tbody.innerHTML = data.slice(0, 20).map(r => {{
-                let badge = r.category === 'Good' ? 'bg-green-100 text-green-700' : (r.category === 'Moderate' ? 'bg-yellow-100 text-yellow-700' : (r.category.includes('Unhealthy') ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-700'));
-                let icon = r.category === 'Good' ? 'fa-smile' : (r.category === 'Moderate' ? 'fa-meh' : (r.category.includes('Unhealthy') ? 'fa-frown' : 'fa-exclamation-triangle'));
-                return `<tr class="border-t hover:bg-gray-50"><td class="px-6 py-3 text-sm">${{new Date(r.timestamp).toLocaleString()}}</td><td class="px-6 py-3 font-medium">${{r.station_name}}</td><td class="px-6 py-3">${{r.pm25}}</td><td class="px-6 py-3">${{r.pm10 || '--'}}</td><td class="px-6 py-3 font-semibold">${{r.aqi}}</td><td class="px-6 py-3"><span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs {badge}"><i class="fas {icon} text-xs"></i> ${{r.category}}</span></td></tr>`;
+                let badgeClass = '';
+                let icon = '';
+                if (r.category === 'Good') {{
+                    badgeClass = 'bg-green-100 text-green-700';
+                    icon = 'fa-smile';
+                }} else if (r.category === 'Moderate') {{
+                    badgeClass = 'bg-yellow-100 text-yellow-700';
+                    icon = 'fa-meh';
+                }} else if (r.category.includes('Unhealthy for Sensitive')) {{
+                    badgeClass = 'bg-orange-100 text-orange-700';
+                    icon = 'fa-frown';
+                }} else if (r.category.includes('Unhealthy')) {{
+                    badgeClass = 'bg-red-100 text-red-700';
+                    icon = 'fa-frown-open';
+                }} else if (r.category.includes('Very Unhealthy')) {{
+                    badgeClass = 'bg-purple-100 text-purple-700';
+                    icon = 'fa-skull';
+                }} else {{
+                    badgeClass = 'bg-gray-100 text-gray-700';
+                    icon = 'fa-exclamation-triangle';
+                }}
+                return `<tr class="border-t hover:bg-gray-50">
+                    <td class="px-6 py-3 text-sm">${{new Date(r.timestamp).toLocaleString()}}</td>
+                    <td class="px-6 py-3 font-medium">${{r.station_name}}</td>
+                    <td class="px-6 py-3">${{r.pm25}}</td>
+                    <td class="px-6 py-3">${{r.pm10 || '--'}}</td>
+                    <td class="px-6 py-3 font-semibold">${{r.aqi}}</td>
+                    <td class="px-6 py-3"><span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs ${badgeClass}"><i class="fas ${icon} text-xs"></i> ${{r.category}}</span></td>
+                </tr>`;
             }}).join('') || '<tr><td colspan="6" class="text-center py-8 text-gray-500">No matching records found</td></tr>';
             document.getElementById('rowCount').textContent = data.length;
         }}
         
         function refreshData() {{ window.location.reload(); }}
+        
         function showAQIInfo(idx) {{
             const info = [
                 {{ title: 'Good (0-50)', text: 'Air quality is considered satisfactory, and air pollution poses little or no risk.' }},
@@ -690,7 +723,10 @@ def generate_html():
             document.getElementById('aqiInfoText').textContent = info[idx].text;
             document.getElementById('aqiInfoPopup').classList.remove('hidden');
         }}
-        function hideAQIInfo() {{ document.getElementById('aqiInfoPopup').classList.add('hidden'); }}
+        
+        function hideAQIInfo() {{
+            document.getElementById('aqiInfoPopup').classList.add('hidden');
+        }}
         
         initChart();
         updateCurrentTime();
