@@ -2,14 +2,17 @@ name: Fetch Real Gulu Air Quality Data
 
 on:
   schedule:
-    # Run every hour (AirQo updates hourly)
     - cron: '5 * * * *'
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
 
 permissions:
   contents: write
   pages: write
   id-token: write
+
+env:
+  # Optional: Force Node.js 24 now to test
+  # FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   fetch-and-deploy:
@@ -28,7 +31,7 @@ jobs:
     
     - name: Install dependencies
       run: |
-        pip install requests pandas
+        pip install requests pandas pytz
     
     - name: Fetch real Gulu air quality data
       run: python src/real_gulu_data.py
@@ -36,11 +39,24 @@ jobs:
     - name: Generate static dashboard
       run: python src/generate_static.py
     
+    - name: Copy site to root (for GitHub Pages)
+      run: |
+        mkdir -p _site
+        cp -r _site/* ./ || true
+        echo "Site files ready"
+    
+    - name: List generated files (debug)
+      run: |
+        echo "Files in _site:"
+        ls -la _site/ || echo "No _site folder yet"
+        echo "Files in root:"
+        ls -la *.html 2>/dev/null || echo "No HTML files in root"
+    
     - name: Commit and push data
       run: |
         git config user.name "GitHub Actions Bot"
         git config user.email "actions@github.com"
-        git add data/ _site/
+        git add data/ _site/ *.html 2>/dev/null || true
         git diff --quiet && git diff --staged --quiet || (git commit -m "Update real Gulu air quality data [$(date +'%Y-%m-%d %H:%M:%S')]" && git push)
     
     - name: Upload Pages artifact
