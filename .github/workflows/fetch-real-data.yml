@@ -1,0 +1,52 @@
+name: Fetch Real Gulu Air Quality Data
+
+on:
+  schedule:
+    # Run every hour (AirQo updates hourly)
+    - cron: '5 * * * *'
+  workflow_dispatch:  # Manual trigger
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  fetch-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        persist-credentials: true
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        pip install requests pandas
+    
+    - name: Fetch real Gulu air quality data
+      run: python src/real_gulu_data.py
+    
+    - name: Generate static dashboard
+      run: python src/generate_static.py
+    
+    - name: Commit and push data
+      run: |
+        git config user.name "GitHub Actions Bot"
+        git config user.email "actions@github.com"
+        git add data/ _site/
+        git diff --quiet && git diff --staged --quiet || (git commit -m "Update real Gulu air quality data [$(date +'%Y-%m-%d %H:%M:%S')]" && git push)
+    
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: ./_site
+    
+    - name: Deploy to GitHub Pages
+      uses: actions/deploy-pages@v4
