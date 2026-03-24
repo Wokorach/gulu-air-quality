@@ -5,10 +5,16 @@ on:
     - cron: '5 * * * *'
   workflow_dispatch:
 
+# Required permissions for GitHub Pages
 permissions:
   contents: write
   pages: write
   id-token: write
+
+# Define the environment
+environment:
+  name: github-pages
+  url: ${{ steps.deployment.outputs.page_url }}
 
 jobs:
   fetch-and-deploy:
@@ -17,9 +23,6 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-      with:
-        persist-credentials: true
-        fetch-depth: 0
     
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -28,31 +31,22 @@ jobs:
     
     - name: Install dependencies
       run: |
-        pip install requests pandas pytz
+        pip install requests pytz
     
     - name: Fetch real Gulu air quality data
       run: python src/real_gulu_data.py
+      continue-on-error: true
     
     - name: Generate static dashboard
       run: python src/generate_static.py
     
-    - name: Copy site files to root
+    - name: Copy site to root for Pages
       run: |
+        mkdir -p _site
         if [ -f _site/index.html ]; then
           cp _site/index.html ./
-          echo "✅ Copied index.html to root"
-        else
-          echo "⚠️ _site/index.html not found"
-          ls -la _site/ || echo "No _site folder"
+          echo "✅ Dashboard ready"
         fi
-    
-    - name: Commit and push changes
-      run: |
-        git config user.name "GitHub Actions Bot"
-        git config user.email "actions@github.com"
-        git add data/ _site/ *.html 2>/dev/null || true
-        git status
-        git diff --quiet && git diff --staged --quiet || (git commit -m "Update real Gulu air quality data [$(date +'%Y-%m-%d %H:%M:%S')]" && git push)
     
     - name: Upload Pages artifact
       uses: actions/upload-pages-artifact@v3
@@ -60,4 +54,5 @@ jobs:
         path: ./
     
     - name: Deploy to GitHub Pages
+      id: deployment
       uses: actions/deploy-pages@v4
