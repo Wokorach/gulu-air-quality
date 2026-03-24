@@ -1,12 +1,12 @@
 # 🌍 Gulu City Real Air Quality Monitor
 
-[![Fetch Real Gulu Data](https://github.com/yourusername/gulu-air-quality/actions/workflows/fetch-real-data.yml/badge.svg)](https://github.com/yourusername/gulu-air-quality/actions/workflows/fetch-real-data.yml)
+[![Fetch Real Gulu Data](https://github.com/wokorach/gulu-air-quality/actions/workflows/fetch-real-data.yml/badge.svg)](https://github.com/wokorach/gulu-air-quality/actions/workflows/fetch-real-data.yml)
 
 **REAL air quality data** from ground monitoring stations in Gulu City, Uganda.
 
 ## 📊 Live Dashboard
 
-[View Dashboard](https://yourusername.github.io/gulu-air-quality/)
+[View Dashboard](https://wokorach.github.io/gulu-air-quality/)
 
 ## 📍 Monitoring Stations
 
