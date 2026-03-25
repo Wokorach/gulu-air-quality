@@ -37,13 +37,48 @@ jobs:
     - name: Generate static dashboard
       run: python src/generate_static.py
     
-    - name: Copy site to root for Pages
+    - name: DEBUG - List all files
       run: |
+        echo "=== Files in root ==="
+        ls -la
+        echo ""
+        echo "=== Files in _site ==="
+        ls -la _site/ || echo "No _site folder"
+        echo ""
+        echo "=== Check if index.html exists in root ==="
+        if [ -f index.html ]; then
+          echo "✅ index.html exists in root"
+          head -5 index.html
+        else
+          echo "❌ index.html NOT found in root"
+        fi
+    
+    - name: Copy site files to root
+      run: |
+        # Create _site if it doesn't exist
         mkdir -p _site
+        
+        # If generate_static.py creates index.html in root, move it
+        if [ -f index.html ]; then
+          cp index.html _site/
+          echo "✅ Copied index.html from root to _site"
+        fi
+        
+        # If generate_static.py creates index.html in _site, copy to root
         if [ -f _site/index.html ]; then
           cp _site/index.html ./
-          echo "✅ Dashboard ready"
+          echo "✅ Copied index.html from _site to root"
+        else
+          echo "⚠️ No index.html found anywhere"
         fi
+        
+        # List final files
+        echo ""
+        echo "=== Final files in root ==="
+        ls -la *.html 2>/dev/null || echo "No HTML files in root"
+        echo ""
+        echo "=== Final files in _site ==="
+        ls -la _site/ 2>/dev/null || echo "No _site folder"
     
     - name: Upload Pages artifact
       uses: actions/upload-pages-artifact@v3
