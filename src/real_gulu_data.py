@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Gulu Air Quality Data Fetcher - Using AQICN API (REAL DATA)
-Fetches data for all Gulu monitoring stations from aqicn.org
+Fetches data for all 6 Gulu monitoring stations from aqicn.org
 """
 
 import requests
@@ -17,14 +17,14 @@ UGANDA_TZ = pytz.timezone('Africa/Kampala')
 # Your validated AQICN API token
 AQICN_TOKEN = "30c2eb1a7728722c1767bb97c935b7dddaff052b"
 
-# All Gulu monitoring stations from AQICN
+# All 6 Gulu monitoring stations with their correct AQICN IDs
 GULU_STATIONS = [
-    {"id": "@418291", "name": "Palaro Rajab"},
-    {"id": "@418414", "name": "Mary Queen of Peace P/S Oguru"},
-    {"id": "@418078", "name": "Gulu University"},
-    {"id": "@418459", "name": "Pece, Gulu"},
-    {"id": "@422173", "name": "Gulu Main Market"},
-    {"id": "@418084", "name": "Layibi"}
+    {"id": "A422173", "name": "Gulu Main Market"},
+    {"id": "A418078", "name": "Gulu University"},
+    {"id": "A418291", "name": "Palaro Rajab"},
+    {"id": "A418414", "name": "Mary Queen of Peace P/S Oguru"},
+    {"id": "A418459", "name": "Pece, Gulu"},
+    {"id": "A418084", "name": "Layibi"}
 ]
 
 class GuluAirQuality:
@@ -35,7 +35,6 @@ class GuluAirQuality:
         print("🌍 Gulu Air Quality Data Fetcher - REAL DATA")
         print("=" * 60)
         print(f"Source: AQICN API (https://aqicn.org)")
-        print(f"Token: {AQICN_TOKEN[:8]}... (validated)")
         print(f"Monitoring Stations: {len(GULU_STATIONS)}")
         for s in GULU_STATIONS:
             print(f"  • {s['name']} ({s['id']})")
@@ -80,18 +79,12 @@ class GuluAirQuality:
             return "Hazardous"
     
     def fetch_station_data(self, station):
-        """
-        Fetch real data from AQICN API for a specific station
-        API Doc: https://aqicn.org/json-api/doc/
-        """
+        """Fetch real data from AQICN API for a specific station"""
         station_id = station["id"]
         station_name = station["name"]
         
         try:
-            # Remove @ prefix for API call
-            api_id = station_id.lstrip('@')
-            url = f"https://api.waqi.info/feed/{api_id}/?token={AQICN_TOKEN}"
-            
+            url = f"https://api.waqi.info/feed/{station_id}/?token={AQICN_TOKEN}"
             print(f"📡 Fetching: {station_name} ({station_id})")
             
             response = requests.get(url, timeout=30)
@@ -102,10 +95,10 @@ class GuluAirQuality:
                 if data.get('status') == 'ok':
                     station_data = data.get('data', {})
                     
-                    # Extract AQI and pollutant values
+                    # Extract AQI
                     aqi = station_data.get('aqi')
                     
-                    # Extract PM2.5 and PM10 from iaqi
+                    # Extract pollutants from iaqi
                     iaqi = station_data.get('iaqi', {})
                     pm25_info = iaqi.get('pm25', {})
                     pm10_info = iaqi.get('pm10', {})
@@ -117,27 +110,19 @@ class GuluAirQuality:
                     time_info = station_data.get('time', {})
                     timestamp = time_info.get('iso', datetime.now().isoformat())
                     
-                    # If no PM2.5 but AQI exists, estimate PM2.5 from AQI
-                    if pm25 is None and aqi is not None:
-                        pm25 = self.aqi_to_pm25_estimate(aqi)
+                    print(f"   ✅ AQI: {aqi} | PM2.5: {pm25} | PM10: {pm10} | Category: {self.get_category_from_aqi(aqi)}")
                     
-                    if aqi is not None:
-                        category = self.get_category_from_aqi(aqi)
-                        print(f"   ✅ AQI: {aqi} | PM2.5: {pm25 if pm25 else 'N/A'} | Category: {category}")
-                        return {
-                            'station_id': station_id,
-                            'station_name': station_name,
-                            'pm25': pm25,
-                            'pm10': pm10,
-                            'aqi': aqi,
-                            'timestamp': timestamp,
-                            'source': 'AQICN'
-                        }
-                    else:
-                        print(f"   ⚠️ No AQI data available for {station_name}")
-                        return None
+                    return {
+                        'station_id': station_id,
+                        'station_name': station_name,
+                        'pm25': pm25,
+                        'pm10': pm10,
+                        'aqi': aqi,
+                        'timestamp': timestamp,
+                        'source': 'AQICN'
+                    }
                 else:
-                    print(f"   ❌ API error: {data.get('message', 'Unknown')}")
+                    print(f"   ❌ API error: {data.get('data', 'Unknown error')}")
                     return None
             else:
                 print(f"   ❌ HTTP {response.status_code}")
@@ -146,21 +131,6 @@ class GuluAirQuality:
         except Exception as e:
             print(f"   ❌ Exception: {e}")
             return None
-    
-    def aqi_to_pm25_estimate(self, aqi):
-        """Estimate PM2.5 from AQI (EPA conversion)"""
-        if aqi <= 50:
-            return round(aqi * 0.24, 1)  # 0-50 AQI = 0-12 µg/m³
-        elif aqi <= 100:
-            return round(12 + (aqi - 50) * (35.4 - 12) / 50, 1)
-        elif aqi <= 150:
-            return round(35.4 + (aqi - 100) * (55.4 - 35.4) / 50, 1)
-        elif aqi <= 200:
-            return round(55.4 + (aqi - 150) * (150.4 - 55.4) / 50, 1)
-        elif aqi <= 300:
-            return round(150.4 + (aqi - 200) * (250.4 - 150.4) / 100, 1)
-        else:
-            return round(250.4 + (aqi - 300) * (500 - 250.4) / 100, 1)
     
     def fetch_all_stations(self):
         """Fetch data for all Gulu stations"""
@@ -175,11 +145,7 @@ class GuluAirQuality:
                 all_readings.append(reading)
         
         print("-" * 50)
-        
-        if all_readings:
-            print(f"\n✅ Successfully fetched {len(all_readings)} of {len(GULU_STATIONS)} stations")
-        else:
-            print("\n⚠️ Could not fetch data from any station")
+        print(f"\n✅ Successfully fetched {len(all_readings)} of {len(GULU_STATIONS)} stations")
         
         return all_readings
     
@@ -241,8 +207,7 @@ class GuluAirQuality:
                 'readings': data,
                 'last_updated': datetime.now(UGANDA_TZ).isoformat(),
                 'source': source,
-                'stations_found': list(set(r['station_name'] for r in data)),
-                'total_stations': len(GULU_STATIONS)
+                'stations_found': list(set(r['station_name'] for r in data))
             }, f, indent=2, default=str)
         
         # Print summary
@@ -251,7 +216,6 @@ class GuluAirQuality:
         for s in sorted(stations):
             print(f"   - {s}")
         print(f"\n📁 Data source: {source}")
-        print(f"📅 Last updated: {datetime.now(UGANDA_TZ).strftime('%d %b %Y, %H:%M:%S')}")
         
         return len(data)
     
@@ -271,12 +235,6 @@ class GuluAirQuality:
             print("\n🌍 View your dashboard at: https://YOUR-USERNAME.github.io/gulu-air-quality/")
         else:
             print("\n⚠️ No data received from AQICN API")
-            print("\nPossible reasons:")
-            print("   1. API token may need activation at https://aqicn.org/data-platform/token/")
-            print("   2. Check if your token is active")
-            print("   3. Some stations may be temporarily offline")
-            print("\nTo test your token, visit:")
-            print(f"   https://api.waqi.info/feed/@418078/?token={AQICN_TOKEN}")
             
             # Create empty JSON with error info
             with open('data/latest_readings.json', 'w') as f:
@@ -284,7 +242,7 @@ class GuluAirQuality:
                     'readings': [],
                     'last_updated': datetime.now(UGANDA_TZ).isoformat(),
                     'source': 'No Data',
-                    'error': 'Unable to fetch from AQICN API. Check token and station IDs.'
+                    'error': 'Unable to fetch from AQICN API'
                 }, f, indent=2, default=str)
         
         return readings
