@@ -5,20 +5,17 @@ on:
     - cron: '5 * * * *'
   workflow_dispatch:
 
-# Required permissions for GitHub Pages
 permissions:
   contents: write
   pages: write
   id-token: write
 
-# Define the environment
-environment:
-  name: github-pages
-  url: ${{ steps.deployment.outputs.page_url }}
-
 jobs:
   fetch-and-deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     
     steps:
     - name: Checkout repository
