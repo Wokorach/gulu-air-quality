@@ -1,26 +1,45 @@
 #!/usr/bin/env python3
 """
-Real Gulu Air Quality Data Fetcher - With Sample Data Fallback
+Gulu Air Quality Data Fetcher - Using AQICN API (REAL DATA)
+Fetches data for all Gulu monitoring stations from aqicn.org
 """
 
 import requests
 import json
 import sqlite3
-import os
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 import pytz
 
 DB_PATH = 'data/gulu_air_quality.db'
 UGANDA_TZ = pytz.timezone('Africa/Kampala')
 
+# Your validated AQICN API token
+AQICN_TOKEN = "30c2eb1a7728722c1767bb97c935b7dddaff052b"
+
+# All Gulu monitoring stations from AQICN
+GULU_STATIONS = [
+    {"id": "@418291", "name": "Palaro Rajab"},
+    {"id": "@418414", "name": "Mary Queen of Peace P/S Oguru"},
+    {"id": "@418078", "name": "Gulu University"},
+    {"id": "@418459", "name": "Pece, Gulu"},
+    {"id": "@422173", "name": "Gulu Main Market"},
+    {"id": "@418084", "name": "Layibi"}
+]
+
 class GuluAirQuality:
     def __init__(self):
         Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
         self.setup_db()
-        print("=" * 50)
-        print("🌍 Gulu Air Quality Data Fetcher")
-        print("=" * 50)
+        print("=" * 60)
+        print("🌍 Gulu Air Quality Data Fetcher - REAL DATA")
+        print("=" * 60)
+        print(f"Source: AQICN API (https://aqicn.org)")
+        print(f"Token: {AQICN_TOKEN[:8]}... (validated)")
+        print(f"Monitoring Stations: {len(GULU_STATIONS)}")
+        for s in GULU_STATIONS:
+            print(f"  • {s['name']} ({s['id']})")
+        print("=" * 60)
     
     def setup_db(self):
         conn = sqlite3.connect(DB_PATH)
@@ -29,131 +48,140 @@ class GuluAirQuality:
             CREATE TABLE IF NOT EXISTS measurements (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT,
+                station_id TEXT,
                 station_name TEXT,
                 pm25 REAL,
                 pm10 REAL,
                 aqi INTEGER,
-                category TEXT
+                category TEXT,
+                source TEXT,
+                UNIQUE(timestamp, station_id)
             )
         ''')
         conn.commit()
         conn.close()
+        print("✅ Database ready")
     
-    def get_category(self, pm25):
-        if pm25 <= 12:
+    def get_category_from_aqi(self, aqi):
+        """Convert AQI value to category (EPA standard)"""
+        if aqi is None:
+            return "No Data"
+        if aqi <= 50:
             return "Good"
-        elif pm25 <= 35.4:
+        elif aqi <= 100:
             return "Moderate"
-        elif pm25 <= 55.4:
+        elif aqi <= 150:
             return "Unhealthy for Sensitive"
-        elif pm25 <= 150.4:
+        elif aqi <= 200:
             return "Unhealthy"
-        elif pm25 <= 250.4:
+        elif aqi <= 300:
             return "Very Unhealthy"
         else:
             return "Hazardous"
     
-    def get_aqi(self, pm25):
-        if pm25 <= 12:
-            return 50
-        elif pm25 <= 35.4:
-            return 100
-        elif pm25 <= 55.4:
-            return 150
-        elif pm25 <= 150.4:
-            return 200
-        elif pm25 <= 250.4:
-            return 300
-        else:
-            return 400
-    
-    def create_sample_data(self):
-        """Create realistic sample data for Gulu City"""
-        now = datetime.now(UGANDA_TZ)
-        sample_readings = []
+    def fetch_station_data(self, station):
+        """
+        Fetch real data from AQICN API for a specific station
+        API Doc: https://aqicn.org/json-api/doc/
+        """
+        station_id = station["id"]
+        station_name = station["name"]
         
-        # Gulu stations with realistic coordinates
-        stations = [
-            {'name': 'Gulu University', 'base_pm25': 28, 'base_pm10': 45},
-            {'name': 'Kasubi Central', 'base_pm25': 32, 'base_pm10': 52},
-            {'name': 'Layibi', 'base_pm25': 25, 'base_pm10': 40}
-        ]
-        
-        for station in stations:
-            # Generate 24 hours of data (last 24 hours)
-            for i in range(24):
-                hour = now - timedelta(hours=i)
-                # Add some variation based on time of day
-                hour_of_day = hour.hour
-                if 7 <= hour_of_day <= 9:  # Morning rush
-                    factor = 1.5
-                elif 17 <= hour_of_day <= 19:  # Evening rush
-                    factor = 1.4
-                elif 22 <= hour_of_day or hour_of_day <= 5:  # Night
-                    factor = 0.7
-                else:
-                    factor = 1.0
-                
-                # Add random variation
-                import random
-                random_factor = random.uniform(0.8, 1.2)
-                
-                pm25 = round(station['base_pm25'] * factor * random_factor, 1)
-                pm10 = round(station['base_pm10'] * factor * random_factor, 1)
-                
-                # Ensure values are reasonable
-                pm25 = min(max(pm25, 5), 150)
-                pm10 = min(max(pm10, 10), 200)
-                
-                sample_readings.append({
-                    'station': station['name'],
-                    'pm25': pm25,
-                    'pm10': pm10,
-                    'timestamp': hour.isoformat()
-                })
-        
-        # Sort by timestamp (newest first)
-        sample_readings.sort(key=lambda x: x['timestamp'], reverse=True)
-        return sample_readings
-    
-    def fetch_from_airqo(self):
-        """Try to fetch real data from AirQo API"""
         try:
-            url = "https://api.airqo.net/v2/devices/measurements"
-            params = {'recent': 'hour', 'limit': 50}
-            response = requests.get(url, params=params, timeout=30)
+            # Remove @ prefix for API call
+            api_id = station_id.lstrip('@')
+            url = f"https://api.waqi.info/feed/{api_id}/?token={AQICN_TOKEN}"
             
-            if response.status_code != 200:
-                print(f"⚠️ API returned status {response.status_code}")
-                return []
+            print(f"📡 Fetching: {station_name} ({station_id})")
             
-            data = response.json()
-            readings = []
+            response = requests.get(url, timeout=30)
             
-            # Look for Gulu in the data
-            for item in data:
-                location = item.get('location', '').lower()
-                device_name = item.get('device_name', '').lower()
+            if response.status_code == 200:
+                data = response.json()
                 
-                if 'gulu' in location or 'gulu' in device_name:
-                    pm25 = item.get('pm2_5') or item.get('pm2.5')
-                    if pm25:
-                        readings.append({
-                            'station': item.get('device_name', 'Gulu Station'),
-                            'pm25': float(pm25),
-                            'pm10': float(item.get('pm10', 0)) if item.get('pm10') else None,
-                            'timestamp': item.get('time', datetime.now().isoformat())
-                        })
-            
-            if readings:
-                print(f"✅ Found {len(readings)} real readings from Gulu")
+                if data.get('status') == 'ok':
+                    station_data = data.get('data', {})
+                    
+                    # Extract AQI and pollutant values
+                    aqi = station_data.get('aqi')
+                    
+                    # Extract PM2.5 and PM10 from iaqi
+                    iaqi = station_data.get('iaqi', {})
+                    pm25_info = iaqi.get('pm25', {})
+                    pm10_info = iaqi.get('pm10', {})
+                    
+                    pm25 = pm25_info.get('v') if pm25_info else None
+                    pm10 = pm10_info.get('v') if pm10_info else None
+                    
+                    # Get timestamp
+                    time_info = station_data.get('time', {})
+                    timestamp = time_info.get('iso', datetime.now().isoformat())
+                    
+                    # If no PM2.5 but AQI exists, estimate PM2.5 from AQI
+                    if pm25 is None and aqi is not None:
+                        pm25 = self.aqi_to_pm25_estimate(aqi)
+                    
+                    if aqi is not None:
+                        category = self.get_category_from_aqi(aqi)
+                        print(f"   ✅ AQI: {aqi} | PM2.5: {pm25 if pm25 else 'N/A'} | Category: {category}")
+                        return {
+                            'station_id': station_id,
+                            'station_name': station_name,
+                            'pm25': pm25,
+                            'pm10': pm10,
+                            'aqi': aqi,
+                            'timestamp': timestamp,
+                            'source': 'AQICN'
+                        }
+                    else:
+                        print(f"   ⚠️ No AQI data available for {station_name}")
+                        return None
+                else:
+                    print(f"   ❌ API error: {data.get('message', 'Unknown')}")
+                    return None
             else:
-                print("⚠️ No Gulu data found in API response")
-            
-            return readings
+                print(f"   ❌ HTTP {response.status_code}")
+                return None
+                
         except Exception as e:
-            print(f"⚠️ API Error: {e}")
-            return []
+            print(f"   ❌ Exception: {e}")
+            return None
+    
+    def aqi_to_pm25_estimate(self, aqi):
+        """Estimate PM2.5 from AQI (EPA conversion)"""
+        if aqi <= 50:
+            return round(aqi * 0.24, 1)  # 0-50 AQI = 0-12 µg/m³
+        elif aqi <= 100:
+            return round(12 + (aqi - 50) * (35.4 - 12) / 50, 1)
+        elif aqi <= 150:
+            return round(35.4 + (aqi - 100) * (55.4 - 35.4) / 50, 1)
+        elif aqi <= 200:
+            return round(55.4 + (aqi - 150) * (150.4 - 55.4) / 50, 1)
+        elif aqi <= 300:
+            return round(150.4 + (aqi - 200) * (250.4 - 150.4) / 100, 1)
+        else:
+            return round(250.4 + (aqi - 300) * (500 - 250.4) / 100, 1)
+    
+    def fetch_all_stations(self):
+        """Fetch data for all Gulu stations"""
+        all_readings = []
+        
+        print("\n📡 Fetching real-time data from AQICN...")
+        print("-" * 50)
+        
+        for station in GULU_STATIONS:
+            reading = self.fetch_station_data(station)
+            if reading:
+                all_readings.append(reading)
+        
+        print("-" * 50)
+        
+        if all_readings:
+            print(f"\n✅ Successfully fetched {len(all_readings)} of {len(GULU_STATIONS)} stations")
+        else:
+            print("\n⚠️ Could not fetch data from any station")
+        
+        return all_readings
     
     def save_readings(self, readings):
         """Save readings to database"""
@@ -162,25 +190,35 @@ class GuluAirQuality:
         
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
+        inserted = 0
         
-        saved = 0
         for r in readings:
-            aqi = self.get_aqi(r['pm25'])
-            category = self.get_category(r['pm25'])
+            category = self.get_category_from_aqi(r['aqi'])
+            
             try:
                 cursor.execute('''
-                    INSERT INTO measurements (timestamp, station_name, pm25, pm10, aqi, category)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                ''', (r['timestamp'], r['station'], r['pm25'], r['pm10'], aqi, category))
-                saved += 1
+                    INSERT OR REPLACE INTO measurements
+                    (timestamp, station_id, station_name, pm25, pm10, aqi, category, source)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    r['timestamp'],
+                    r['station_id'],
+                    r['station_name'],
+                    r.get('pm25'),
+                    r.get('pm10'),
+                    r['aqi'],
+                    category,
+                    r['source']
+                ))
+                inserted += 1
             except Exception as e:
-                print(f"Error saving: {e}")
+                print(f"Insert error: {e}")
         
         conn.commit()
         conn.close()
-        return saved
+        return inserted
     
-    def export_json(self):
+    def export_json(self, readings):
         """Export readings to JSON for dashboard"""
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
@@ -189,48 +227,65 @@ class GuluAirQuality:
         cursor.execute('''
             SELECT * FROM measurements 
             ORDER BY timestamp DESC 
-            LIMIT 100
+            LIMIT 500
         ''')
         rows = cursor.fetchall()
         data = [dict(row) for row in rows]
+        conn.close()
+        
+        # Determine data source for display
+        source = "AQICN (Real-time)" if readings else "No Data"
         
         with open('data/latest_readings.json', 'w') as f:
             json.dump({
                 'readings': data,
                 'last_updated': datetime.now(UGANDA_TZ).isoformat(),
-                'source': 'sample_data'
+                'source': source,
+                'stations_found': list(set(r['station_name'] for r in data)),
+                'total_stations': len(GULU_STATIONS)
             }, f, indent=2, default=str)
         
-        conn.close()
+        # Print summary
+        stations = set(r['station_name'] for r in data)
+        print(f"\n📊 Stations with data in JSON ({len(stations)} stations):")
+        for s in sorted(stations):
+            print(f"   - {s}")
+        print(f"\n📁 Data source: {source}")
+        print(f"📅 Last updated: {datetime.now(UGANDA_TZ).strftime('%d %b %Y, %H:%M:%S')}")
+        
         return len(data)
     
     def run(self):
-        """Main execution"""
-        print("Fetching Gulu air quality data...")
+        print("\n🔄 Fetching Gulu air quality data...")
         
-        # Try to get real data first
-        readings = self.fetch_from_airqo()
+        # Fetch real data from AQICN
+        readings = self.fetch_all_stations()
         
-        # If no real data, use sample data
-        if not readings:
-            print("📊 Using sample data for Gulu City")
-            readings = self.create_sample_data()
-            source = "sample"
+        if readings:
+            inserted = self.save_readings(readings)
+            print(f"\n💾 Saved {inserted} readings to database")
+            
+            total = self.export_json(readings)
+            print(f"\n📄 Exported {total} total readings to JSON")
+            print("\n🎉 SUCCESS! Your dashboard now displays REAL data from AQICN!")
+            print("\n🌍 View your dashboard at: https://YOUR-USERNAME.github.io/gulu-air-quality/")
         else:
-            source = "api"
-        
-        # Save to database
-        saved = self.save_readings(readings)
-        count = self.export_json()
-        
-        print(f"✅ Saved {saved} readings to database")
-        print(f"📁 Exported {count} readings to JSON")
-        
-        # Show latest readings
-        print("\n📊 Latest Readings:")
-        for r in readings[:3]:
-            category = self.get_category(r['pm25'])
-            print(f"   {r['station']}: PM2.5 = {r['pm25']} µg/m³ ({category})")
+            print("\n⚠️ No data received from AQICN API")
+            print("\nPossible reasons:")
+            print("   1. API token may need activation at https://aqicn.org/data-platform/token/")
+            print("   2. Check if your token is active")
+            print("   3. Some stations may be temporarily offline")
+            print("\nTo test your token, visit:")
+            print(f"   https://api.waqi.info/feed/@418078/?token={AQICN_TOKEN}")
+            
+            # Create empty JSON with error info
+            with open('data/latest_readings.json', 'w') as f:
+                json.dump({
+                    'readings': [],
+                    'last_updated': datetime.now(UGANDA_TZ).isoformat(),
+                    'source': 'No Data',
+                    'error': 'Unable to fetch from AQICN API. Check token and station IDs.'
+                }, f, indent=2, default=str)
         
         return readings
 
