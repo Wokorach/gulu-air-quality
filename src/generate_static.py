@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gulu Air Quality Dashboard Generator
+Gulu Air Quality Dashboard Generator - Shows ALL Stations
 """
 
 import json
@@ -39,57 +39,65 @@ def generate_html():
     
     current_time = format_time()
     
-    # Generate station cards
+    # Get the LATEST reading for each station (by timestamp)
+    latest_by_station = {}
+    for r in latest_readings:
+        station = r.get('station_name', '')
+        timestamp = r.get('timestamp', '')
+        if station and (station not in latest_by_station or timestamp > latest_by_station[station]['timestamp']):
+            latest_by_station[station] = r
+    
+    print(f"📊 Found {len(latest_by_station)} unique stations: {list(latest_by_station.keys())}")
+    
+    # Generate station cards for ALL stations
     cards_html = ''
-    if latest_readings:
-        # Group by station to show latest per station
-        stations_seen = set()
-        for r in latest_readings:
-            station = r.get('station_name', '')
-            if station and station not in stations_seen:
-                stations_seen.add(station)
-                pm25 = r.get('pm25', '--')
-                pm10 = r.get('pm10', '--') or '--'
-                category = r.get('category', 'Moderate')
-                aqi = r.get('aqi', '--')
-                
-                if category == 'Good':
-                    color = 'bg-green-500'
-                elif category == 'Moderate':
-                    color = 'bg-yellow-500'
-                elif 'Unhealthy' in category:
-                    color = 'bg-red-500'
-                else:
-                    color = 'bg-gray-500'
-                
-                cards_html += f'''
-                <div class="bg-white rounded-xl shadow-lg p-5">
-                    <div class="flex justify-between items-start">
-                        <div>
-                            <h3 class="font-bold text-lg text-gray-800">{station}</h3>
-                            <p class="text-xs text-gray-500">Ground Monitoring Station</p>
-                        </div>
-                        <div class="w-12 h-12 rounded-full {color} flex items-center justify-center text-white font-bold text-lg">
-                            {aqi}
-                        </div>
+    if latest_by_station:
+        for station_name, r in latest_by_station.items():
+            pm25 = r.get('pm25', '--')
+            pm10 = r.get('pm10', '--') or '--'
+            category = r.get('category', 'Moderate')
+            aqi = r.get('aqi', '--')
+            
+            # Set color based on AQI category
+            if category == 'Good':
+                color = 'bg-green-500'
+            elif category == 'Moderate':
+                color = 'bg-yellow-500'
+            elif 'Unhealthy' in category:
+                color = 'bg-red-500'
+            elif 'Hazardous' in category:
+                color = 'bg-purple-600'
+            else:
+                color = 'bg-gray-500'
+            
+            cards_html += f'''
+            <div class="bg-white rounded-xl shadow-lg p-5 card-hover">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <h3 class="font-bold text-lg text-gray-800">{station_name}</h3>
+                        <p class="text-xs text-gray-500">Ground Monitoring Station</p>
                     </div>
-                    <div class="mt-4 grid grid-cols-2 gap-3">
-                        <div class="text-center p-2 bg-gray-50 rounded-lg">
-                            <div class="text-2xl font-bold text-gray-800">{pm25}</div>
-                            <div class="text-xs text-gray-500">PM2.5 (µg/m³)</div>
-                        </div>
-                        <div class="text-center p-2 bg-gray-50 rounded-lg">
-                            <div class="text-2xl font-bold text-gray-800">{pm10}</div>
-                            <div class="text-xs text-gray-500">PM10 (µg/m³)</div>
-                        </div>
-                    </div>
-                    <div class="mt-3 text-center">
-                        <span class="inline-block px-3 py-1 rounded-full text-xs text-white {color}">
-                            {category}
-                        </span>
+                    <div class="w-12 h-12 rounded-full {color} flex items-center justify-center text-white font-bold text-lg">
+                        {aqi}
                     </div>
                 </div>
-                '''
+                <div class="mt-4 grid grid-cols-2 gap-3">
+                    <div class="text-center p-2 bg-gray-50 rounded-lg">
+                        <div class="text-2xl font-bold text-gray-800">{pm25}</div>
+                        <div class="text-xs text-gray-500">PM2.5 (µg/m³)</div>
+                    </div>
+                    <div class="text-center p-2 bg-gray-50 rounded-lg">
+                        <div class="text-2xl font-bold text-gray-800">{pm10}</div>
+                        <div class="text-xs text-gray-500">PM10 (µg/m³)</div>
+                    </div>
+                </div>
+                <div class="mt-3 text-center">
+                    <span class="inline-block px-3 py-1 rounded-full text-xs text-white {color}">
+                        {category}
+                    </span>
+                </div>
+            </div>
+            '''
     else:
         cards_html = '''
         <div class="col-span-3 text-center py-12 bg-white rounded-xl shadow-md">
@@ -99,10 +107,10 @@ def generate_html():
         </div>
         '''
     
-    # Generate table rows
+    # Generate table rows for ALL readings
     table_html = ''
     if latest_readings:
-        for r in latest_readings[:20]:
+        for r in latest_readings[:30]:
             timestamp = r.get('timestamp', '')
             try:
                 dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
@@ -147,24 +155,26 @@ def generate_html():
     else:
         table_html = '<tr><td colspan="6" class="text-center py-8 text-gray-500">No data yet. Check back soon.</td></tr>'
     
-    # Health advice
+    # Health advice based on highest AQI (most severe)
     health_advice = "Loading air quality data from Gulu monitoring stations..."
-    if latest_readings and latest_readings[0].get('pm25'):
-        pm25_val = latest_readings[0]['pm25']
-        if pm25_val <= 12:
-            health_advice = "✅ Air quality is GOOD. Enjoy outdoor activities safely."
-        elif pm25_val <= 35.4:
-            health_advice = "⚠️ Air quality is MODERATE. Sensitive individuals should limit prolonged outdoor exertion."
-        elif pm25_val <= 55.4:
-            health_advice = "⚠️ UNHEALTHY FOR SENSITIVE GROUPS. Children and elderly should reduce outdoor activities."
-        elif pm25_val <= 150.4:
-            health_advice = "🚨 UNHEALTHY. Everyone may experience health effects. Limit outdoor activities."
-        elif pm25_val <= 250.4:
-            health_advice = "🚨 VERY UNHEALTHY. Health alert. Avoid outdoor activities."
-        else:
-            health_advice = "🔥 HAZARDOUS! Stay indoors with windows closed."
+    if latest_readings:
+        # Find highest AQI (most severe)
+        highest_aqi = max((r.get('aqi', 0) for r in latest_readings if r.get('aqi')), default=None)
+        if highest_aqi:
+            if highest_aqi <= 50:
+                health_advice = "✅ Air quality is GOOD. Enjoy outdoor activities safely."
+            elif highest_aqi <= 100:
+                health_advice = "⚠️ Air quality is MODERATE. Sensitive individuals should limit prolonged outdoor exertion."
+            elif highest_aqi <= 150:
+                health_advice = "⚠️ UNHEALTHY FOR SENSITIVE GROUPS. Children and elderly should reduce outdoor activities."
+            elif highest_aqi <= 200:
+                health_advice = "🚨 UNHEALTHY. Everyone may experience health effects. Limit outdoor activities."
+            elif highest_aqi <= 300:
+                health_advice = "🚨 VERY UNHEALTHY. Health alert. Avoid outdoor activities."
+            else:
+                health_advice = "🔥 HAZARDOUS! Stay indoors with windows closed."
     
-    # Generate HTML
+    # Generate full HTML
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -174,16 +184,27 @@ def generate_html():
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {{ font-family: 'Inter', system-ui, sans-serif; }}
+        body {{ background: linear-gradient(135deg, #f5f7fa 0%, #e9ecef 100%); }}
+        .card-hover {{ transition: transform 0.2s ease, box-shadow 0.2s ease; }}
+        .card-hover:hover {{ transform: translateY(-4px); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); }}
+        .gradient-header {{ background: linear-gradient(135deg, #0a2e1f 0%, #1a4d2e 100%); }}
+        .cypis-badge {{ background: linear-gradient(135deg, #0B3B5F 0%, #1E6F5C 100%); }}
+    </style>
 </head>
-<body class="bg-gray-100 font-sans">
-    <div class="max-w-6xl mx-auto px-4 py-8">
-        
-        <!-- Header -->
-        <div class="bg-gradient-to-r from-green-800 to-green-700 text-white rounded-2xl p-6 mb-8">
+<body>
+    <div class="gradient-header text-white shadow-lg">
+        <div class="max-w-6xl mx-auto px-4 py-6">
             <div class="flex flex-col md:flex-row justify-between items-center">
-                <div>
-                    <h1 class="text-2xl md:text-3xl font-bold">🌍 Gulu Air Quality Monitor</h1>
-                    <p class="text-green-100 text-sm mt-1">Powered by CYPIS DataTelligence | University of the Sacred Heart Gulu</p>
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-chart-line text-xl text-green-300"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-2xl md:text-3xl font-bold">🌍 Gulu Air Quality Monitor</h1>
+                        <p class="text-green-200 text-sm">Powered by CYPIS DataTelligence | University of the Sacred Heart Gulu</p>
+                    </div>
                 </div>
                 <div class="mt-3 md:mt-0 text-right">
                     <div class="text-sm text-green-200">Data Source: AQICN (Real-time)</div>
@@ -191,8 +212,30 @@ def generate_html():
                 </div>
             </div>
         </div>
+    </div>
+    
+    <div class="max-w-6xl mx-auto px-4 py-8">
         
-        <!-- Station Cards -->
+        <!-- Stats Banner -->
+        <div class="bg-gradient-to-r from-gray-800 to-gray-700 rounded-2xl shadow-lg mb-6">
+            <div class="flex flex-wrap items-center justify-between px-6 py-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-cyan-500/20 rounded-full flex items-center justify-center">
+                        <i class="fas fa-chart-simple text-cyan-300"></i>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-300">ACTIVE MONITORING STATIONS</p>
+                        <p class="text-2xl font-bold text-white">{len(latest_by_station)} Stations</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-map-marker-alt text-gray-400"></i>
+                    <span class="text-sm text-gray-300">Gulu City, Uganda</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Station Cards - All Stations -->
         <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             {cards_html}
         </div>
@@ -232,7 +275,7 @@ def generate_html():
                 </table>
             </div>
             <div class="px-6 py-3 bg-gray-50 border-t text-xs text-gray-500 flex justify-between">
-                <span>Showing {len(latest_readings[:20])} of {len(latest_readings)} readings</span>
+                <span>Showing {min(len(latest_readings), 30)} of {len(latest_readings)} readings</span>
                 <span>Data source: {data_source}</span>
             </div>
         </div>
@@ -254,7 +297,8 @@ def generate_html():
         f.write(html)
     
     print(f"✅ Dashboard generated at {OUTPUT_DIR}/index.html")
-    print(f"   Readings displayed: {len(latest_readings)}")
+    print(f"   Stations displayed: {len(latest_by_station)}")
+    print(f"   Total readings: {len(latest_readings)}")
 
 if __name__ == '__main__':
     generate_html()
