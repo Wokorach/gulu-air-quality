@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gulu Air Quality Dashboard Generator - With Sample Data Support
+Gulu Air Quality Dashboard Generator - Saves to root and _site
 """
 
 import json
@@ -23,6 +23,7 @@ def format_time(dt=None):
     return dt.strftime('%d %b %Y, %H:%M:%S')
 
 def generate_html():
+    # Create directories
     Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
     
     # Load data
@@ -179,7 +180,7 @@ def generate_html():
         else:
             health_advice = "🔥 HAZARDOUS! Stay indoors with windows closed."
     
-    # Generate full HTML (same as before)
+    # Generate full HTML
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -353,12 +354,19 @@ def generate_html():
 </body>
 </html>'''
     
+    # Save to BOTH locations
+    # 1. Save to _site for GitHub Pages artifact
     with open(f'{OUTPUT_DIR}/index.html', 'w') as f:
         f.write(html)
     
-    print(f"✅ Dashboard generated at {OUTPUT_DIR}/index.html")
-    print(f"   Data retrieved at: {current_time}")
-    print(f"   Readings displayed: {len(latest_readings)}")
+    # 2. Save to root for direct access
+    with open('index.html', 'w') as f:
+        f.write(html)
+    
+    print(f"✅ Dashboard saved to:")
+    print(f"   - {OUTPUT_DIR}/index.html")
+    print(f"   - index.html (root)")
+    print(f"   Readings: {len(latest_readings)}")
 
 if __name__ == '__main__':
     generate_html()
