@@ -20,10 +20,10 @@ AQICN_TOKEN = "30c2eb1a7728722c1767bb97c935b7dddaff052b"
 GULU_STATIONS = [
     {"id": "A422173", "name": "Gulu Main Market"},
     {"id": "A418078", "name": "Gulu University"},
-    {"id": "A418291", "name": "Palaro Rajab"},
-    {"id": "A418414", "name": "Mary Queen of Peace P/S Oguru"},
-    {"id": "A418459", "name": "Pece, Gulu"},
-    {"id": "A418084", "name": "Layibi"}
+    {"id": "A418291", "name": "Lapeta Health Centre 3"},
+    {"id": "A418414", "name": "Mary Queen of Peace P/s Gulu"},
+    {"id": "A418459", "name": "Pece Gulu"},
+    {"id": "A418084", "name": "Layibi Gulu"}
 ]
 
 class GuluAirQuality:
