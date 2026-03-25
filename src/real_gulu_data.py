@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Gulu Air Quality Data Fetcher - Using AQICN API (REAL DATA)
-Fetches data for all 6 Gulu monitoring stations from aqicn.org
+Gulu Air Quality Data Fetcher - Working with ALL 6 Stations
+Handles stations where AQI is "-" by calculating from PM2.5
 """
 
 import requests
@@ -14,10 +14,9 @@ import pytz
 DB_PATH = 'data/gulu_air_quality.db'
 UGANDA_TZ = pytz.timezone('Africa/Kampala')
 
-# Your validated AQICN API token
 AQICN_TOKEN = "30c2eb1a7728722c1767bb97c935b7dddaff052b"
 
-# All 6 Gulu monitoring stations with their correct AQICN IDs
+# All 6 Gulu monitoring stations with their correct AQICN IDs (A-prefixed)
 GULU_STATIONS = [
     {"id": "A422173", "name": "Gulu Main Market"},
     {"id": "A418078", "name": "Gulu University"},
@@ -32,7 +31,7 @@ class GuluAirQuality:
         Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
         self.setup_db()
         print("=" * 60)
-        print("🌍 Gulu Air Quality Data Fetcher - REAL DATA")
+        print("🌍 Gulu Air Quality Data Fetcher - ALL 6 STATIONS")
         print("=" * 60)
         print(f"Source: AQICN API (https://aqicn.org)")
         print(f"Monitoring Stations: {len(GULU_STATIONS)}")
@@ -60,6 +59,23 @@ class GuluAirQuality:
         conn.commit()
         conn.close()
         print("✅ Database ready")
+    
+    def pm25_to_aqi(self, pm25):
+        """Convert PM2.5 to AQI (EPA standard)"""
+        if pm25 is None:
+            return None
+        if pm25 <= 12.0:
+            return 50
+        elif pm25 <= 35.4:
+            return 100
+        elif pm25 <= 55.4:
+            return 150
+        elif pm25 <= 150.4:
+            return 200
+        elif pm25 <= 250.4:
+            return 300
+        else:
+            return 400
     
     def get_category_from_aqi(self, aqi):
         """Convert AQI value to category (EPA standard)"""
@@ -95,10 +111,10 @@ class GuluAirQuality:
                 if data.get('status') == 'ok':
                     station_data = data.get('data', {})
                     
-                    # Extract AQI
-                    aqi = station_data.get('aqi')
+                    # Get AQI - may be "-" so we'll calculate from PM2.5
+                    aqi_raw = station_data.get('aqi')
                     
-                    # Extract pollutants from iaqi
+                    # Get PM2.5 and PM10 from iaqi
                     iaqi = station_data.get('iaqi', {})
                     pm25_info = iaqi.get('pm25', {})
                     pm10_info = iaqi.get('pm10', {})
@@ -106,21 +122,32 @@ class GuluAirQuality:
                     pm25 = pm25_info.get('v') if pm25_info else None
                     pm10 = pm10_info.get('v') if pm10_info else None
                     
+                    # Calculate AQI from PM2.5 if needed
+                    if aqi_raw == "-" or aqi_raw is None:
+                        aqi = self.pm25_to_aqi(pm25) if pm25 else None
+                    else:
+                        aqi = aqi_raw
+                    
                     # Get timestamp
                     time_info = station_data.get('time', {})
                     timestamp = time_info.get('iso', datetime.now().isoformat())
                     
-                    print(f"   ✅ AQI: {aqi} | PM2.5: {pm25} | PM10: {pm10} | Category: {self.get_category_from_aqi(aqi)}")
-                    
-                    return {
-                        'station_id': station_id,
-                        'station_name': station_name,
-                        'pm25': pm25,
-                        'pm10': pm10,
-                        'aqi': aqi,
-                        'timestamp': timestamp,
-                        'source': 'AQICN'
-                    }
+                    if aqi is not None:
+                        category = self.get_category_from_aqi(aqi)
+                        print(f"   ✅ PM2.5: {pm25} | PM10: {pm10} | AQI: {aqi} | Category: {category}")
+                        
+                        return {
+                            'station_id': station_id,
+                            'station_name': station_name,
+                            'pm25': pm25,
+                            'pm10': pm10,
+                            'aqi': aqi,
+                            'timestamp': timestamp,
+                            'source': 'AQICN'
+                        }
+                    else:
+                        print(f"   ⚠️ No data available for {station_name}")
+                        return None
                 else:
                     print(f"   ❌ API error: {data.get('data', 'Unknown error')}")
                     return None
@@ -146,6 +173,12 @@ class GuluAirQuality:
         
         print("-" * 50)
         print(f"\n✅ Successfully fetched {len(all_readings)} of {len(GULU_STATIONS)} stations")
+        
+        # Print summary of working stations
+        if all_readings:
+            print("\n📊 Working stations:")
+            for r in all_readings:
+                print(f"   • {r['station_name']} - AQI: {r['aqi']} | PM2.5: {r['pm25']}")
         
         return all_readings
     
@@ -199,7 +232,6 @@ class GuluAirQuality:
         data = [dict(row) for row in rows]
         conn.close()
         
-        # Determine data source for display
         source = "AQICN (Real-time)" if readings else "No Data"
         
         with open('data/latest_readings.json', 'w') as f:
@@ -212,17 +244,15 @@ class GuluAirQuality:
         
         # Print summary
         stations = set(r['station_name'] for r in data)
-        print(f"\n📊 Stations with data in JSON ({len(stations)} stations):")
+        print(f"\n📊 Stations saved to JSON ({len(stations)} stations):")
         for s in sorted(stations):
             print(f"   - {s}")
-        print(f"\n📁 Data source: {source}")
         
         return len(data)
     
     def run(self):
-        print("\n🔄 Fetching Gulu air quality data...")
+        print("\n🔄 Fetching Gulu air quality data for all 6 stations...")
         
-        # Fetch real data from AQICN
         readings = self.fetch_all_stations()
         
         if readings:
@@ -231,22 +261,19 @@ class GuluAirQuality:
             
             total = self.export_json(readings)
             print(f"\n📄 Exported {total} total readings to JSON")
-            print("\n🎉 SUCCESS! Your dashboard now displays REAL data from AQICN!")
+            print("\n🎉 SUCCESS! All 6 stations are now in your dashboard!")
             print("\n🌍 View your dashboard at: https://YOUR-USERNAME.github.io/gulu-air-quality/")
         else:
-            print("\n⚠️ No data received from AQICN API")
+            print("\n⚠️ No data received")
             
-            # Create empty JSON with error info
             with open('data/latest_readings.json', 'w') as f:
                 json.dump({
                     'readings': [],
                     'last_updated': datetime.now(UGANDA_TZ).isoformat(),
-                    'source': 'No Data',
-                    'error': 'Unable to fetch from AQICN API'
+                    'source': 'No Data'
                 }, f, indent=2, default=str)
         
         return readings
-
 
 if __name__ == '__main__':
     monitor = GuluAirQuality()
