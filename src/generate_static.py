@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Gulu Air Quality Dashboard Generator - Working Version
-Contact: +256779753870 (WhatsApp)
+Gulu Air Quality Dashboard Generator - With Sample Data Support
 """
 
 import json
@@ -28,10 +27,13 @@ def generate_html():
     
     # Load data
     latest_readings = []
+    data_source = "Unknown"
+    
     if Path(DATA_FILE).exists():
         with open(DATA_FILE, 'r') as f:
             data = json.load(f)
             latest_readings = data.get('readings', [])
+            data_source = data.get('source', 'AirQo API')
     
     current_time = format_time()
     
@@ -48,7 +50,16 @@ def generate_html():
     # Generate station cards
     cards_html = ''
     if latest_readings:
-        for r in latest_readings[:3]:
+        # Group by station to show latest per station
+        stations_seen = set()
+        station_readings = []
+        for r in latest_readings:
+            station = r.get('station_name', '')
+            if station not in stations_seen:
+                stations_seen.add(station)
+                station_readings.append(r)
+        
+        for r in station_readings[:3]:
             pm25 = r.get('pm25', '--')
             pm10 = r.get('pm10', '--') or '--'
             category = r.get('category', 'Moderate')
@@ -94,7 +105,13 @@ def generate_html():
             </div>
             '''
     else:
-        cards_html = '<div class="col-span-3 text-center py-12 bg-white rounded-xl shadow-md"><i class="fas fa-spinner fa-spin text-3xl text-gray-400 mb-3"></i><p class="text-gray-500">Waiting for data from Gulu monitoring stations...</p></div>'
+        cards_html = '''
+        <div class="col-span-3 text-center py-12 bg-white rounded-xl shadow-md">
+            <i class="fas fa-spinner fa-spin text-3xl text-gray-400 mb-3"></i>
+            <p class="text-gray-500">Loading data from Gulu monitoring stations...</p>
+            <p class="text-xs text-gray-400 mt-2">Data updates every hour</p>
+        </div>
+        '''
     
     # Generate table rows
     table_html = ''
@@ -146,7 +163,7 @@ def generate_html():
         table_html = '<tr><td colspan="6" class="text-center py-8 text-gray-500">No data yet. Check back soon.</td></tr>'
     
     # Generate health advice based on latest reading
-    health_advice = "Waiting for data from Gulu monitoring stations..."
+    health_advice = "Loading air quality data from Gulu monitoring stations..."
     if latest_readings and latest_readings[0].get('pm25'):
         pm25_val = latest_readings[0]['pm25']
         if pm25_val <= 12:
@@ -162,7 +179,7 @@ def generate_html():
         else:
             health_advice = "🔥 HAZARDOUS! Stay indoors with windows closed."
     
-    # Generate full HTML
+    # Generate full HTML (same as before)
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -297,7 +314,7 @@ def generate_html():
             </div>
             <div class="px-6 py-3 bg-gray-50 border-t text-xs text-gray-500 flex justify-between">
                 <span>Showing {len(latest_readings[:20])} of {len(latest_readings)} readings</span>
-                <span><i class="fas fa-clock mr-1"></i> Last data retrieved: {data_retrieved_at}</span>
+                <span><i class="fas fa-clock mr-1"></i> Data source: {data_source}</span>
             </div>
         </div>
         
@@ -341,7 +358,7 @@ def generate_html():
     
     print(f"✅ Dashboard generated at {OUTPUT_DIR}/index.html")
     print(f"   Data retrieved at: {current_time}")
-    print(f"   Contact: +256 779753870 (WhatsApp)")
+    print(f"   Readings displayed: {len(latest_readings)}")
 
 if __name__ == '__main__':
     generate_html()
